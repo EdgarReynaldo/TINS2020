@@ -63,25 +63,51 @@ int main(int argc , char** argv) {
    
    bool redraw = true;
    bool quit = false;
+   int tick = 0;
    
    SplashScene splash(win);
+   StoryScene story(win);
+
+   splash.next = &story;
+   story.next = 0;
+   
    if (!splash.Init()) {
       return 2;
    }
+   if (!story.Init()) {
+      return 3;
+   }
+   
+   Scene* cscene = &splash;
+   
+   STATUS status = STATUS_READY;
    
    while (!quit) {
       if (redraw) {
          
          win->Clear();
    
-         splash.Display(win);
+         cscene->Display(win);
          
          win->FlipDisplay();
          redraw = false;
+         tick = 0;
       }
       do {
          EagleEvent e = sys->WaitForSystemEventAndUpdateState();
          
+         status = cscene->HandleEvent(e);
+         if (status == STATUS_QUIT) {
+            quit = true;
+         }
+         else if (status == STATUS_COMPLETE) {
+            cscene = cscene->Next();
+            if (!cscene) {
+               quit = true;
+               break;
+            }
+            continue;
+         }
          if (e.type == EAGLE_EVENT_DISPLAY_CLOSE) {
             quit = true;
          }
@@ -89,14 +115,22 @@ int main(int argc , char** argv) {
             quit = true;
          }
          if (e.type == EAGLE_EVENT_TIMER) {
-            if (splash.Update(e.timer.eagle_timer_source->SPT()) == STATUS_COMPLETE) {
-               quit = true;
+            tick++;
+            if (tick == 1) {
+               if (cscene->Update(e.timer.eagle_timer_source->SPT()) == STATUS_COMPLETE) {
+                  cscene = cscene->Next();
+                  if (!cscene) {
+                     quit = true;
+                     break;
+                  }
+               }
             }
             redraw = true;
          }
          if (input_key_held(EAGLE_KEY_ANY_CTRL) && input_key_press(EAGLE_KEY_F1)) {
             fullscreen = !fullscreen;
             splash.Destroy();
+            story.Destroy();
             if (fullscreen) {
                sw = fsw;
                sh = fsh;
@@ -108,12 +142,14 @@ int main(int argc , char** argv) {
                sh = wh;
             }
             win->Create(sw , sh , mode);
+            story.Init();
             splash.Init();
          }
       } while (!sys->UpToDate());
    }
    
    splash.Destroy();
+   story.Destroy();
    
    cfg["Graphics"]["WWidth"] = StringPrintF("%d" , ww);
    cfg["Graphics"]["WHeight"] = StringPrintF("%d" , wh);
